@@ -1,0 +1,1 @@
+class Iarm::Msg::ChannelMember < Iarm::Msg ; end

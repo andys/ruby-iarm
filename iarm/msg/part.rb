@@ -1,0 +1,1 @@
+class Iarm::Msg::Part < Iarm::Msg ; end

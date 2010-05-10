@@ -1,0 +1,1 @@
+class Iarm::Msg::Timeout < Iarm::Msg ; end
