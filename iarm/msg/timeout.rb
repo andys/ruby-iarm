@@ -1,1 +1,1 @@
-class Iarm::Msg::Timeout < Iarm::Msg ; end
+class Iarm::Msg::Timeout < Iarm::Msg::Part ; end

@@ -22,11 +22,9 @@ module Iarm
         loop do
           sleep 5
           @mutex.synchronize do
-            puts("Reaping clients.. " + @clients.keys.join(','))
             @clients.each do |who, tla|
               next if((tla + @ttl_secs) > Time.new.to_i)
               if(@channels_joined.has_key?(who))
-                puts "reaper: #{who} timed out in #{@channels_joined[who].size} channels"
                 @channels_joined[who].each do |ch|
                   @channel_members[ch].delete(who)
                   send_msg(Msg::Timeout.new(ch, who))
@@ -44,16 +42,23 @@ module Iarm
       @ttl_secs = ttl_secs
     end
 
+    def list(pattern=nil)
+      pattern ? @channels.keys.grep(pattern) : @channels.keys
+    end
+    
+    def who(channel)
+      if(@channels.has_key?(channel))
+        @channel_members[channel].keys
+      end
+    end
+
     def join(who, channel, key=nil)      # returns true if joined, false if denied, and nil if new channel formed
       retval = nil
-      puts "join: #{who}->#{channel} key=#{key.inspect}"
       @mutex.synchronize do
         if(@channels.has_key?(channel))
           retval = (@channels[channel] == key) 
-          puts "join: retval=#{retval.inspect}"
         else
           @channels[channel] = key
-          puts "join: New channel formed"
         end
 
         if(retval != false)  # if retval is true (joined existing) or nil (new channel formed)
@@ -86,8 +91,8 @@ module Iarm
       # also serves as a keep-alive to avoid getting killed by ttl 
       # if who=nil then it listens on all channels, but only one client can do this at once
       # if another client is already listening with the same who-id, it has the effect of making them return immediately (before their timeout is up)
-    def getmsg(who, timeout=0)  
-      if(timeout != 0)
+    def getmsg(who, timeout=0)
+      if(@msgs[who].empty? && timeout != 0)
         wait_existing = false
         msg = @mutex.synchronize do
           wait_existing = Iarm::Timer.poke(@listeners[who])

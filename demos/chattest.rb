@@ -7,11 +7,13 @@ nick = gets
 nick.chomp!
 
 reader = Thread.new do
+	puts "reader: Connecting"
 	iarm = Iarm::Client.connect('drbunix:/tmp/.s.iarm')
 	msg = nil
 	loop do
-		sleep 1 if(msg.nil?)
-		msg = iarm.getmsg(nick, 5)
+		#sleep 1 if(msg.nil?)
+		puts "reader: waiting for message"
+		msg = iarm.getmsg(nick, 30)
 		if(msg)
 			if(msg.kind_of?(Iarm::Msg::Join))
 				puts "#{msg.channel}: *** #{msg.from} #{msg.kind_of?(Iarm::Msg::ChannelMember) ? 'is in' : 'has joined'} the channel"
@@ -24,13 +26,16 @@ reader = Thread.new do
 	end
 end
 
+puts "writer: connecting"
 ia = Iarm::Client.connect('drbunix:/tmp/.s.iarm')
 ch = nil
 
 loop do
+	puts "Input?"
 	input = gets
 	if(input)
 		input.chomp!
+		puts "writer: posting"
 		if(input =~ /\/join (.*)$/)
 			ch = $1
 			puts "*** #{nick} joining #{ch}"
