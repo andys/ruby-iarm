@@ -1,5 +1,5 @@
 
-require 'iarm/timer'
-require 'iarm/msg'
-require 'iarm/server'
-require 'iarm/client'
+['timer', 'msg', 'server', 'client'].each do |x|
+  require("#{File.dirname(__FILE__)}/iarm/" + x)
+end
+

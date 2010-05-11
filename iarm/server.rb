@@ -5,39 +5,9 @@ require 'drb'
 module Iarm
   class Server
 
-    def initialize
-      @mutex = Mutex.new()
-      @ttl_secs = 60
-      @listeners = Hash.new()            # { who => Thread }
-      @msgs = Hash.new() {|hsh,key| hsh[key] = [ ] }  # { who => [ msg1, msg2, ...] }
-      @clients = Hash.new()            # { who => time_of_last_activity }
-      @channel_members = Hash.new() {|hsh,key| hsh[key] = { } }  # { channelname => { who1 => join_time }, who2 =>  ...] }
-      @channels_joined = Hash.new() {|hsh,key| hsh[key] = [ ] }  # { who => [ channel1, channel2 ] }
-      @channels = Hash.new()             # { channelname => password }
-      reaper_thread
+    def ping
+      'pong'
     end
-    
-    def reaper_thread
-      @reaper ||= Thread.new do
-        loop do
-          sleep 5
-          @mutex.synchronize do
-            @clients.each do |who, tla|
-              next if((tla + @ttl_secs) > Time.new.to_i)
-              if(@channels_joined.has_key?(who))
-                @channels_joined[who].each do |ch|
-                  @channel_members[ch].delete(who)
-                  send_msg(Msg::Timeout.new(ch, who))
-                  check_channel_empty(ch)
-                end
-              end
-              kill_client(who)
-            end
-          end
-        end
-      end
-    end
-
     def ttl(ttl_secs)
       @ttl_secs = ttl_secs
     end
@@ -92,6 +62,7 @@ module Iarm
       # if who=nil then it listens on all channels, but only one client can do this at once
       # if another client is already listening with the same who-id, it has the effect of making them return immediately (before their timeout is up)
     def getmsg(who, timeout=0)
+      puts "Getting message for #{who}: #{@msgs[who].inspect}"
       if(@msgs[who].empty? && timeout != 0)
         wait_existing = false
         msg = @mutex.synchronize do
@@ -122,6 +93,39 @@ module Iarm
     end
 
     private
+    def initialize
+      @mutex = Mutex.new()
+      @ttl_secs = 60
+      @listeners = Hash.new()            # { who => Thread }
+      @msgs = Hash.new() {|hsh,key| hsh[key] = [ ] }  # { who => [ msg1, msg2, ...] }
+      @clients = Hash.new()            # { who => time_of_last_activity }
+      @channel_members = Hash.new() {|hsh,key| hsh[key] = { } }  # { channelname => { who1 => join_time }, who2 =>  ...] }
+      @channels_joined = Hash.new() {|hsh,key| hsh[key] = [ ] }  # { who => [ channel1, channel2 ] }
+      @channels = Hash.new()             # { channelname => password }
+      reaper_thread
+    end
+    
+    def reaper_thread
+      @reaper ||= Thread.new do
+        loop do
+          sleep 5
+          @mutex.synchronize do
+            @clients.each do |who, tla|
+              next if((tla + @ttl_secs) > Time.new.to_i)
+              if(@channels_joined.has_key?(who))
+                @channels_joined[who].each do |ch|
+                  @channel_members[ch].delete(who)
+                  send_msg(Msg::Timeout.new(ch, who))
+                  check_channel_empty(ch)
+                end
+              end
+              kill_client(who)
+            end
+          end
+        end
+      end
+    end
+
     def send_msg(msg)
       @channel_members[msg.channel].each_key {|w| post_msg(w, msg) }
       post_msg(nil, msg) if(@clients.has_key?(nil))
