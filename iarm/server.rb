@@ -18,7 +18,7 @@ module Iarm
     
     def who(channel)
       if(@channels.has_key?(channel))
-        @channel_members[channel].keys
+        @channel_members[channel].each {|w,time| post_msg(who, Msg::ChannelMember.new(channel, w, time)) } 
       end
     end
 
@@ -32,7 +32,6 @@ module Iarm
         end
 
         if(retval != false)  # if retval is true (joined existing) or nil (new channel formed)
-          @channel_members[channel].each {|w,time| post_msg(who, Msg::ChannelMember.new(channel, w, time)) } if(retval)
           if(!@channel_members[channel].has_key?(who)) # don't re-join them if they've already joined before
             @channel_members[channel][who] = Time.now.to_i
             @channels_joined[who] << channel
@@ -62,7 +61,7 @@ module Iarm
       # if who=nil then it listens on all channels, but only one client can do this at once
       # if another client is already listening with the same who-id, it has the effect of making them return immediately (before their timeout is up)
     def getmsg(who, timeout=0)
-      puts "Getting message for #{who}: #{@msgs[who].inspect}"
+      #puts "Getting message for #{who}: #{@msgs[who].inspect}"
       if(@msgs[who].empty? && timeout != 0)
         wait_existing = false
         msg = @mutex.synchronize do
@@ -86,6 +85,10 @@ module Iarm
         res << msg
       end
       res
+    end
+
+    def say(who, channel, data)
+      post(Iarm::Msg.new(channel, who, data))
     end
 
     def post(msg)

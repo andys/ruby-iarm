@@ -1,4 +1,4 @@
-require 'iarm'
+require '../iarm'
 
 Thread.abort_on_exception = true
 
