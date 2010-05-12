@@ -18,7 +18,7 @@ module Iarm
     
     def who(channel)
       if(@channels.has_key?(channel))
-        @channel_members[channel].each {|w,time| post_msg(who, Msg::ChannelMember.new(channel, w, time)) } 
+        @channel_members[channel] #.each {|w,time| post_msg(who, Msg::ChannelMember.new(channel, w, time)) } 
       end
     end
 

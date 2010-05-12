@@ -61,6 +61,12 @@ class TestIarm < Test::Unit::TestCase
     assert_equal 'test message', msg.data
   end
   
+  def test_who
+    @client1.join('client1', 'test_channel')
+    channel_members = @client2.who('test_channel')
+    assert_equal ['client1', 'client2'], channel_members.keys.sort
+  end
+  
   def test_server_running
     assert_equal 'pong', @client1.ping
   end
