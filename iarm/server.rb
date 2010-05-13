@@ -97,7 +97,12 @@ module Iarm
     def post(msg)
       @mutex.synchronize { send_msg(msg) } if(msg.kind_of?(Msg))
     end
-
+    
+    def self.start(uri=nil)
+      DRb.start_service(uri, self.new)
+      DRb.thread
+    end
+    
     private
     def initialize
       @mutex = Mutex.new()

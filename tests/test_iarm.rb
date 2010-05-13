@@ -1,4 +1,4 @@
-
+  
 require '../iarm'
 require 'test/unit'
 
@@ -9,9 +9,7 @@ def socket_path
   'druby://timeline:60733'
 end
 
-iarm_server = Iarm::Server.new
-DRb.start_service(socket_path, iarm_server)
-@server = DRb.thread
+Iarm::Server.start(socket_path)
 
 module TestIarmServer
 
@@ -30,7 +28,7 @@ module TestIarmServer
   
   protected
   def new_client
-    Iarm::Client.connect(socket_path)
+    Iarm::Client.connect(socket_path) or raise 'Cannot connect'
   end
   
 
