@@ -22,7 +22,9 @@ module TestIarmServer
   end
   
   def teardown
+    @client1.depart('client1')
     @client1 = nil
+    @client2.depart('client2')
     @client2 = nil
   end
   
@@ -64,7 +66,31 @@ class TestIarm < Test::Unit::TestCase
   def test_who
     @client1.join('client1', 'test_channel')
     channel_members = @client2.who('test_channel')
+    assert_equal ['client1'], channel_members.keys.sort
+    
+    @client2.join('client2', 'test_channel')
+    channel_members = @client2.who('test_channel')
     assert_equal ['client1', 'client2'], channel_members.keys.sort
+  end
+  
+  def test_depart
+    @client1.join('client1', 'test_channel')
+    @client2.join('client2', 'test_channel')
+    @client1.depart('client1', 'test_channel')
+    msg = @client2.getmsg('client2', 1)
+    assert_instance_of Iarm::Msg::Part, msg
+    
+    channel_members = @client2.who('test_channel')
+    assert_equal ['client2'], channel_members.keys.sort
+  end
+  
+  def test_depart_all
+    @client1.join('client1', 'test_channel')
+    @client1.join('client1', 'test_channel2')
+    @client1.depart('client1')
+
+    assert_equal nil, @client2.who('test_channel')
+    assert_equal nil, @client2.who('test_channel2')
   end
   
   def test_server_running

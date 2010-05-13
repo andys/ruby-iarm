@@ -53,6 +53,7 @@ module Iarm
         end
         kill_client(who) if(channel.nil?)
       end
+      
     end
 
     # getmsg(): NOTES
@@ -61,7 +62,6 @@ module Iarm
       # if who=nil then it listens on all channels, but only one client can do this at once
       # if another client is already listening with the same who-id, it has the effect of making them return immediately (before their timeout is up)
     def getmsg(who, timeout=0)
-      #puts "Getting message for #{who}: #{@msgs[who].inspect}"
       if(@msgs[who].empty? && timeout != 0)
         wait_existing = false
         msg = @mutex.synchronize do
@@ -150,6 +150,10 @@ module Iarm
       end
     end
     def kill_client(who)
+      @channels_joined[who].each do |ch|
+        @channel_members[ch].delete(who)
+        check_channel_empty(ch)
+      end
       @channels_joined.delete(who)
       @clients.delete(who)
       @msgs.delete(who)
