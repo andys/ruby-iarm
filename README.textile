@@ -17,7 +17,7 @@ have passwords.  Also, DRb supports SSL (untested).
 h2. Client Features
 
 * Join and depart channels, depart all channels
-* Channels exist if there is >1 member
+* Channels exist while there are >0 members
 * Get list of channels (optional pattern matching)
 * Get list of members in channel
 * Auto-notified on join, depart, or timeout of other members
