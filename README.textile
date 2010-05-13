@@ -1,0 +1,35 @@
+
+h2. IARM(Intra-Application Relay Messaging for Ruby)
+
+*ruby-iarm is like IRC for ruby apps.*  Based on DRb, clients connect to a central
+server and join channels and send messages to everyone in the channel.
+
+To make it more suitable for refresh loops in websites, clients can
+disconnect and reconnect within a configurable timeout, and not miss any
+messages.
+
+There is no persistence mechanism.  There is no security except channels may
+have passwords.  Also, DRb supports SSL (untested).
+
+
+h2. Usage
+
+bc. require 'iarm'
+
+h3. Start a Server
+
+bc. Iarm::Server.start('drbunix:/tmp/.s.iarm_socket')
+
+h3. Connect, join channel, say something
+
+bc. c = Iarm::Client.connect('drbunix:/tmp/.s.iarm_socket')
+ c.join('nickname', 'channelname')
+ c.say('nickname', 'channelname', 'Hello world')
+
+h3. Read messages
+bc. msg = c.getmsg('nickname')
+ puts "Message received #{msg.class}: #{msg.data}
+   from #{msg.from}
+   on channel #{msg.channel}"
+
+h4. Contact: Andrew Snow <andrew@modulus.org>
