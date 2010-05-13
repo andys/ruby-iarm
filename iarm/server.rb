@@ -19,12 +19,15 @@ module Iarm
     def who(channel)
       if(@channels.has_key?(channel))
         @channel_members[channel] #.each {|w,time| post_msg(who, Msg::ChannelMember.new(channel, w, time)) } 
+      else
+        {}
       end
     end
 
     def join(who, channel, key=nil)      # returns true if joined, false if denied, and nil if new channel formed
       retval = nil
       @mutex.synchronize do
+        @clients[who] = Time.now.to_i
         if(@channels.has_key?(channel))
           retval = (@channels[channel] == key) 
         else
@@ -111,7 +114,7 @@ module Iarm
     def reaper_thread
       @reaper ||= Thread.new do
         loop do
-          sleep 5
+          sleep 2
           @mutex.synchronize do
             @clients.each do |who, tla|
               next if((tla + @ttl_secs) > Time.new.to_i)

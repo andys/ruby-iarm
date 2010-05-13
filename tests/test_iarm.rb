@@ -89,11 +89,21 @@ class TestIarm < Test::Unit::TestCase
     @client1.join('client1', 'test_channel2')
     @client1.depart('client1')
 
-    assert_equal nil, @client2.who('test_channel')
-    assert_equal nil, @client2.who('test_channel2')
+    assert_equal [], @client2.who('test_channel').keys
+    assert_equal [], @client2.who('test_channel2').keys
+    
+    assert_equal [], @client2.list
   end
   
   def test_server_running
     assert_equal 'pong', @client1.ping
+  end
+  
+  def test_timeout
+    @client1.join('client1', 'test_channel')
+    @client1.ttl(2)
+    assert_equal ['client1'], @client2.who('test_channel').keys
+    sleep 2.1
+    assert_equal [], @client2.who('test_channel').keys
   end
 end
