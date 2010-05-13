@@ -16,20 +16,24 @@ h2. Usage
 
 bc. require 'iarm'
 
-h3. Start a Server
+h4. Start a Server:
 
 bc. Iarm::Server.start('drbunix:/tmp/.s.iarm_socket')
 
-h3. Connect, join channel, say something
+h4. Connect, join a channel, say something:
 
 bc. c = Iarm::Client.connect('drbunix:/tmp/.s.iarm_socket')
  c.join('nickname', 'channelname')
  c.say('nickname', 'channelname', 'Hello world')
 
-h3. Read messages
+
+h4. Read messages
+
 bc. msg = c.getmsg('nickname')
  puts "Message received #{msg.class}: #{msg.data}
    from #{msg.from}
    on channel #{msg.channel}"
 
-h4. Contact: Andrew Snow <andrew@modulus.org>
+h3. Contact
+
+Andrew Snow <andrew@modulus.org>
