@@ -5,8 +5,7 @@ require 'test/unit'
 Thread.abort_on_exception = true
 
 def socket_path
-  #'drbunix:/tmp/.s.testiarm'
-  'druby://timeline:60733'
+  'drbunix:/tmp/.s.testiarm'
 end
 
 Iarm::Server.start(socket_path)
