@@ -8,7 +8,7 @@ module Iarm
     
     def self.poke(thr)
       crit do
-        if(thr && thr.stop?)
+        if(thr)# && thr.stop?)
           thr.raise(Poke.new)
           true
         else
@@ -17,11 +17,9 @@ module Iarm
       end
     end
     
-    def self.wait(timeout, critflag=true)
-      if(block_given?)
-        critflag ? crit { yield(true) } : yield(true)
-      end
+    def self.wait(timeout)
       timer = create_timer(timeout)
+      yield(true) if block_given?
       Thread.stop
     rescue Timeout
       return false
@@ -29,9 +27,7 @@ module Iarm
       return true
     ensure
       Thread.kill(timer) if(timer && timer.alive?)
-      if(block_given?)
-        critflag ? crit { yield(false) } : yield(false)
-      end
+      yield(false) if block_given?
     end
     
     def self.crit

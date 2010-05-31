@@ -2,6 +2,8 @@
 require 'thread'
 require 'drb'
 
+
+
 module Iarm
   class Server
 
@@ -77,7 +79,13 @@ module Iarm
           Thread.pass while(@mutex.synchronize { @listeners.has_key?(who) })
         end
 
-        Iarm::Timer.wait(timeout, false) {|mode| @mutex.synchronize { mode ? @listeners[who] = Thread.current : @listeners.delete(who) } }
+        Iarm::Timer.wait(timeout) do |mode|
+          @mutex.synchronize do
+            mode ? @listeners[who] = Thread.current : @listeners.delete(who)
+          end
+          #puts "IARM getmsg: #{who} #{mode ? 'entering' : 'exiting'} wait with msgcount=#{@msgs[who].length}"
+          Iarm::Timer.poke(Thread.current) if mode && @msgs[who].length>0  # don't bother sleeping if we already have a new message waiting
+        end
       end
       @mutex.synchronize { next_msg(who) }
     end
@@ -113,8 +121,26 @@ module Iarm
       @channel_members = Hash.new() {|hsh,key| hsh[key] = { } }  # { channelname => { who1 => join_time }, who2 =>  ...] }
       @channels_joined = Hash.new() {|hsh,key| hsh[key] = [ ] }  # { who => [ channel1, channel2 ] }
       @channels = Hash.new()             # { channelname => password }
+      @timeout_queue = []
       reaper_thread
     end
+    
+    def touch_nickname(nickname)
+      # UPTO THERE
+      timeout_box = @ttl_secs / 5 #/
+      @timeout_queue[timeoutbox] ||= []
+      @timeout_queue[timeoutbox].push(*nickname)
+    end
+    
+=begin
+  reaper ideas
+  ------------
+  
+  have a linked list which is in order of things to timeout
+  when taking something off the list, check its actual timeout value and put it back to sleep if needed
+  this could be a binary search down the track, for performance
+  
+=end    
     
     def reaper_thread
       @reaper ||= Thread.new do
