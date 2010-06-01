@@ -28,8 +28,8 @@ module Iarm
 
     def join(who, channel, key=nil)      # returns true if joined, false if denied, and nil if new channel formed
       retval = nil
+      touch_nickname(who)
       @mutex.synchronize do
-        @clients[who] = Time.now.to_i
         if(@channels.has_key?(channel))
           retval = (@channels[channel] == key) 
         else
@@ -38,7 +38,7 @@ module Iarm
 
         if(retval != false)  # if retval is true (joined existing) or nil (new channel formed)
           if(!@channel_members[channel].has_key?(who)) # don't re-join them if they've already joined before
-            @channel_members[channel][who] = Time.now.to_i
+            @channel_members[channel][who] = clockval
             @channels_joined[who] << channel
             send_msg(Msg::Join.new(channel, who, @channel_members[channel][who]))
           end
@@ -112,8 +112,11 @@ module Iarm
     end
     
     private
+    REAPER_GRANULARITY = 5  #seconds
+    
     def initialize
       @mutex = Mutex.new()
+      @reaper_mutex = Mutex.new()
       @ttl_secs = 60
       @listeners = Hash.new()            # { who => Thread }
       @msgs = Hash.new() {|hsh,key| hsh[key] = [ ] }  # { who => [ msg1, msg2, ...] }
@@ -125,12 +128,16 @@ module Iarm
       reaper_thread
     end
     
-    def touch_nickname(nickname)
+    def touch_nickname(nickname) #TODO: call this
       # UPTO THERE
-      timeout_box = @ttl_secs / 5 #/
-      @timeout_queue[timeoutbox] ||= []
-      @timeout_queue[timeoutbox].push(*nickname)
+      timeout_box = @ttl_secs / REAPER_GRANULARITY #/
+      @reaper_mutex.synchronize do
+        @timeout_queue[timeout_box] ||= []
+        @timeout_queue[timeout_box] << nickname
+        @clients[nickname] = clockval
+      end
     end
+    
     
 =begin
   reaper ideas
@@ -142,13 +149,25 @@ module Iarm
   
 =end    
     
+    def timed_out?(nickname)
+      (tla = @clients[nickname]) && (tla + @ttl_secs) < clockval
+    end
+    
     def reaper_thread
       @reaper ||= Thread.new do
         loop do
-          sleep 2
+          kill_list = []
+          sleep REAPER_GRANULARITY
+          @reaper_mutex.synchronize do
+            timeoutlist = @timeout_queue.shift
+            if timeoutlist
+              timeoutlist.each do |who|
+                kill_list << who if timed_out?(who)
+              end
+            end
+          end
           @mutex.synchronize do
-            @clients.each do |who, tla|
-              next if((tla + @ttl_secs) > Time.new.to_i)
+            kill_list.each do |who|
               if(@channels_joined.has_key?(who))
                 @channels_joined[who].each do |ch|
                   @channel_members[ch].delete(who)
@@ -163,6 +182,10 @@ module Iarm
       end
     end
 
+    def clockval
+      Time.new.to_i
+    end
+    
     def send_msg(msg)
       @channel_members[msg.channel].each_key {|w| post_msg(w, msg) }
       post_msg(nil, msg) if(@clients.has_key?(nil))
@@ -174,7 +197,7 @@ module Iarm
       end
     end
     def next_msg(who) # returns msg or nil
-      @clients[who] = Time.new.to_i     # touch
+      touch_nickname(who)
       @msgs[who].shift
     end
     def check_channel_empty(channel)

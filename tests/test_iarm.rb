@@ -97,10 +97,10 @@ class TestIarm < Test::Unit::TestCase
   end
   
   def test_timeout
-    @client1.join('client1', 'test_channel')
     @client1.ttl(2)
+    @client1.join('client1', 'test_channel')
     assert_equal ['client1'], @client2.who('test_channel').keys
-    sleep 2.1
+    sleep(Iarm::Server::REAPER_GRANULARITY + 1)
     assert_equal [], @client2.who('test_channel').keys
   end
 end
