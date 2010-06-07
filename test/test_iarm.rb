@@ -1,5 +1,5 @@
   
-require '../iarm'
+require "#{File.dirname(__FILE__)}/../lib/iarm"
 require 'test/unit'
 
 Thread.abort_on_exception = true
