@@ -44,7 +44,35 @@ class TestIarm < Test::Unit::TestCase
     assert_instance_of Iarm::Msg::Join, join_msg
     assert_equal 'client2', join_msg.from
     assert_equal 'test_channel', join_msg.channel
+  end
+  
+  def test_topic
+    @client1.join('client1', 'test_channel')
     
+    
+    topic = @client1.get_topic('test_channel')
+    assert_nil topic
+    
+    @client1.set_topic('client1', 'test_channel', 'Channel Topic')
+    topic = @client1.get_topic('test_channel')
+    assert_kind_of Iarm::Msg::Topic, topic
+    assert_equal 'Channel Topic', topic.data
+    assert_equal 'client1', topic.from
+    assert_equal 'test_channel', topic.channel
+    
+    @client2.join('client2', 'test_channel')
+    topic = @client2.getmsg('client2', 1)
+    assert_kind_of Iarm::Msg::Topic, topic
+    assert_equal 'Channel Topic', topic.data
+    assert_equal 'client1', topic.from
+    assert_equal 'test_channel', topic.channel
+    
+    @client2.set_topic('client2', 'test_channel', 'New Topic')
+    topic = @client1.get_topic('test_channel')
+    assert_kind_of Iarm::Msg::Topic, topic
+    assert_equal 'New Topic', topic.data
+    assert_equal 'client2', topic.from
+    assert_equal 'test_channel', topic.channel
   end
   
   def test_queued_msg
@@ -53,7 +81,7 @@ class TestIarm < Test::Unit::TestCase
     @client1.say('client1', 'test_channel', 'test message')
     
     new_connection = new_client
-    msg = new_connection.getmsg('client2', 'test_channel')
+    msg = new_connection.getmsg('client2', 1)
     assert_instance_of Iarm::Msg, msg
     assert_equal 'client1', msg.from
     assert_equal 'test_channel', msg.channel

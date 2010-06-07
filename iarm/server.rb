@@ -41,6 +41,7 @@ module Iarm
             @channel_members[channel][who] = clockval
             @channels_joined[who] << channel
             send_msg(Msg::Join.new(channel, who, @channel_members[channel][who]))
+            post_msg(who, @topics[channel]) if @topics.has_key?(channel)
           end
         end
       end
@@ -79,6 +80,7 @@ module Iarm
           Thread.pass while(@mutex.synchronize { @listeners.has_key?(who) })
         end
 
+        #puts "Timer.wait: timeout=#{timeout}"
         Iarm::Timer.wait(timeout) do |mode|
           @mutex.synchronize do
             mode ? @listeners[who] = Thread.current : @listeners.delete(who)
@@ -100,6 +102,22 @@ module Iarm
 
     def say(who, channel, data)
       post(Iarm::Msg.new(channel, who, data))
+    end
+    
+    def set_topic(who, channel, data)
+      touch_nickname(who)
+      if @channels.has_key?(channel)
+        data = Msg::Topic.new(channel, who, data) unless data.kind_of?(Msg::Topic)
+        if(@topics[channel] != data)
+          @mutex.synchronize { @topics[channel] = data }
+          post(data)
+          data
+        end
+      end
+    end
+    
+    def get_topic(channel)
+      @topics[channel]
     end
 
     def post(msg)
@@ -124,6 +142,7 @@ module Iarm
       @channel_members = Hash.new() {|hsh,key| hsh[key] = { } }  # { channelname => { who1 => join_time }, who2 =>  ...] }
       @channels_joined = Hash.new() {|hsh,key| hsh[key] = [ ] }  # { who => [ channel1, channel2 ] }
       @channels = Hash.new()             # { channelname => password }
+      @topics = Hash.new()		# { channelname => topic }
       @timeout_queue = []
       reaper_thread
     end
@@ -191,7 +210,7 @@ module Iarm
       post_msg(nil, msg) if(@clients.has_key?(nil))
     end
     def post_msg(who, msg)
-      if(who != msg.from)
+      if(msg.kind_of?(Msg::Topic) || who != msg.from)
         @msgs[who] << msg
         Iarm::Timer.poke(@listeners[who]) if(@listeners.has_key?(who))
       end
@@ -204,6 +223,7 @@ module Iarm
       if(@channel_members[channel].empty?)
         @channels.delete(channel)
         @channel_members.delete(channel)
+        @topics.delete(channel)
       end
     end
     def kill_client(who)
