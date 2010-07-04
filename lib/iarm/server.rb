@@ -80,13 +80,14 @@ module Iarm
           Thread.pass while(@mutex.synchronize { @listeners.has_key?(who) })
         end
 
-        #puts "Timer.wait: timeout=#{timeout}"
-        Iarm::Timer.wait(timeout) do |mode|
-          @mutex.synchronize do
-            mode ? @listeners[who] = Thread.current : @listeners.delete(who)
+        if @msgs[who].length == 0
+          Iarm::Timer.wait(timeout) do |mode|
+            @mutex.synchronize do
+              mode ? (@listeners[who] = Thread.current) : @listeners.delete(who)
+            end
+            #puts "IARM getmsg: #{who} #{mode ? 'entering' : 'exiting'} wait with msgcount=#{@msgs[who].length}"
+            Iarm::Timer.poke(Thread.current) if mode && @msgs[who].length>0  # don't bother sleeping if we already have a new message waiting
           end
-          #puts "IARM getmsg: #{who} #{mode ? 'entering' : 'exiting'} wait with msgcount=#{@msgs[who].length}"
-          Iarm::Timer.poke(Thread.current) if mode && @msgs[who].length>0  # don't bother sleeping if we already have a new message waiting
         end
       end
       @mutex.synchronize { next_msg(who) }
@@ -212,7 +213,9 @@ module Iarm
     def post_msg(who, msg)
       if(msg.kind_of?(Msg::Topic) || who != msg.from)
         @msgs[who] << msg
-        Iarm::Timer.poke(@listeners[who]) if(@listeners.has_key?(who))
+        @mutex.syncronize do
+          Iarm::Timer.poke(@listeners[who]) if(@listeners.has_key?(who))
+        end
       end
     end
     def next_msg(who) # returns msg or nil
