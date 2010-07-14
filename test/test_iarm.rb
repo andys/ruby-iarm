@@ -15,7 +15,9 @@ module TestIarmServer
   
   def setup
     @client1 = new_client
+    @client1.ttl(60)
     @client2 = new_client
+    @client2.ttl(60)
   end
   
   def teardown
@@ -36,7 +38,43 @@ end
 class TestIarm < Test::Unit::TestCase
   include TestIarmServer
   
-  def test_join_and_speak
+  def test_join
+  
+    
+  
+  
+    @client1.join('client1', 'test_channel')
+    @client2.join('client2', 'test_channel')
+    
+    # first test timeout with no messages
+    starttime = Time.now.to_f
+    msg = @client2.getmsg('client2', 2)
+    assert_nil msg
+    assert_in_delta(2, (Time.now.to_f - starttime), 0.5)  # should have waited 2 seconds
+
+    testerthread = Thread.start do
+      sleep 1
+      new_connection = new_client
+      new_connection.say('client1', 'test_channel', 'TEST message!')
+    end
+    
+    begin
+      starttime = Time.now.to_f
+      msg = @client2.getmsg('client2', 4)
+      
+      assert_in_delta(1, (Time.now.to_f - starttime), 1) # make sure we didn't wait 4 seconds
+      assert_instance_of Iarm::Msg, msg
+      assert_equal 'client1', msg.from
+      assert_equal 'test_channel', msg.channel
+      assert_equal 'TEST message!', msg.data
+    ensure
+      testerthread.join
+    end
+
+    
+  end
+  
+  def test_getmsg_with_timeout
     @client1.join('client1', 'test_channel')
     @client2.join('client2', 'test_channel')
 
@@ -128,7 +166,8 @@ class TestIarm < Test::Unit::TestCase
     @client1.ttl(2)
     @client1.join('client1', 'test_channel')
     assert_equal ['client1'], @client2.who('test_channel').keys
-    sleep(Iarm::Server::REAPER_GRANULARITY + 1)
+    countdown = Iarm::Server::REAPER_GRANULARITY  * 2 + 1
+    sleep 1 while((countdown -= 1) >= 0 && !@client2.who('test_channel').empty?)
     assert_equal [], @client2.who('test_channel').keys
   end
 end
