@@ -39,10 +39,6 @@ class TestIarm < Test::Unit::TestCase
   include TestIarmServer
   
   def test_join
-  
-    
-  
-  
     @client1.join('client1', 'test_channel')
     @client2.join('client2', 'test_channel')
     
