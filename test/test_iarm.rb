@@ -38,7 +38,7 @@ end
 class TestIarm < Test::Unit::TestCase
   include TestIarmServer
   
-  def test_join
+  def test_getmsg_with_timeout
     @client1.join('client1', 'test_channel')
     @client2.join('client2', 'test_channel')
     
@@ -66,11 +66,9 @@ class TestIarm < Test::Unit::TestCase
     ensure
       testerthread.join
     end
-
-    
   end
   
-  def test_getmsg_with_timeout
+  def test_join
     @client1.join('client1', 'test_channel')
     @client2.join('client2', 'test_channel')
 
