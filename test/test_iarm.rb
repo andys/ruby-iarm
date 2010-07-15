@@ -15,9 +15,7 @@ module TestIarmServer
   
   def setup
     @client1 = new_client
-    @client1.ttl(60)
     @client2 = new_client
-    @client2.ttl(60)
   end
   
   def teardown
@@ -157,9 +155,10 @@ class TestIarm < Test::Unit::TestCase
   end
   
   def test_timeout
-    @client1.ttl(2)
     @client1.join('client1', 'test_channel')
+    @client1.ttl('client1', 2)
     assert_equal ['client1'], @client2.who('test_channel').keys
+    assert_equal 'pong', @client1.ping('client1')
     countdown = Iarm::Server::REAPER_GRANULARITY  * 2 + 1
     sleep 1 while((countdown -= 1) >= 0 && !@client2.who('test_channel').empty?)
     assert_equal [], @client2.who('test_channel').keys

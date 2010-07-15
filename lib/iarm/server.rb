@@ -3,64 +3,59 @@ require 'thread'
 require 'drb'
 
 
-
 module Iarm
   class Server
 
-    def ping
+    def ping(nickname=nil)
+      touch_nickname(nickname) if nickname
       'pong'
     end
-    def ttl(ttl_secs)
-      @ttl_secs = ttl_secs
+
+    def ttl(nickname, ttl_secs)
+      handle = touch_nickname(nickname)
+      handle.ttl = ttl_secs
     end
 
     def list(pattern=nil)
       pattern ? @channels.keys.grep(pattern) : @channels.keys
     end
     
-    def who(channel)
-      if(@channels.has_key?(channel))
-        @channel_members[channel] #.each {|w,time| post_msg(who, Msg::ChannelMember.new(channel, w, time)) } 
-      else
-        {}
-      end
+    def who(channelname)
+      (ch = find_channel(channelname)) && ch.members_by_name || {}
     end
 
-    def join(who, channel, key=nil)      # returns true if joined, false if denied, and nil if new channel formed
+    def join(who, channelname, key=nil)      # returns true if joined, false if denied, and nil if new channel formed
       retval = nil
-      touch_nickname(who)
+      handle = touch_nickname(who)
       @mutex.synchronize do
-        if(@channels.has_key?(channel))
-          retval = (@channels[channel] == key) 
+        if(channel = find_channel(channelname))
+          retval = channel.key == key		# verify password
         else
-          @channels[channel] = key
+          @channels[channelname].key = key 	# create the channel
         end
 
         if(retval != false)  # if retval is true (joined existing) or nil (new channel formed)
-          if(!@channel_members[channel].has_key?(who)) # don't re-join them if they've already joined before
-            @timers[who] = Iarm::Timer.new
-            @channel_members[channel][who] = clockval
-            @channels_joined[who] << channel
-            send_msg(Msg::Join.new(channel, who, @channel_members[channel][who]))
-            post_msg(who, @topics[channel]) if @topics.has_key?(channel)
+          if(!(channel = @channels[channelname]).members.has_key?(handle)) # don't re-join them if they've already joined before
+            handle.join(channel)
           end
         end
       end
       retval
     end 
 
-    def depart(who, channel=nil)  # nil=depart ALL channels and log out client
+    def depart(nickname, channelname=nil)  # nil=depart ALL channels and log out client
       @mutex.synchronize do
-        (channel.nil? ? @channels_joined[who] : [ channel ]).each do |ch|
-          @channels_joined[who].delete(ch)
-          if @channel_members[ch].delete(who)
-            send_msg(Msg::Part.new(ch, who))
+        handle = touch_nickname(nickname)
+        if channelname
+          if(channel = find_channel(channelname))
+            handle.depart(channel)
+            check_channel_empty(channel)
           end
-          check_channel_empty(ch)
+        else
+          handle.depart(nil).each {|ch| check_channel_empty(ch) }
+          @handles.delete(nickname)
         end
-        kill_client(who) if(channel.nil?)
       end
-      
     end
 
     # getmsg(): NOTES
@@ -69,17 +64,15 @@ module Iarm
       # if who=nil then it listens on all channels, but only one client can do this at once
       # if another client is already listening with the same who-id, it has the effect of making them return immediately (before their timeout is up)
     def getmsg(who, timeout=0)
-      if(@msgs[who].empty? && timeout != 0)
-        @timers[who].poke if @timers[who]
+      handle = touch_nickname(who)
+      if(timeout != 0 && handle.no_msgs?)
+        handle.poke
 
-        if @msgs[who].length == 0
-          @timers[who].wait(timeout) do |mode|
-            #puts "IARM getmsg: #{who} #{mode ? 'entering' : 'exiting'} wait with msgcount=#{@msgs[who].length}"
-            mode && @msgs[who].length==0
-          end
+        handle.timer.wait(timeout) do |mode|
+          mode && handle.no_msgs?
         end
       end
-      @mutex.synchronize { next_msg(who) }
+      @mutex.synchronize { handle.msgs.shift }
     end
     
     def getmsgs(who, timeout=0)
@@ -90,30 +83,31 @@ module Iarm
       res
     end
 
-    def say(who, channel, data)
-      post(Iarm::Msg.new(channel, who, data))
+    def say(nickname, channelname, data)
+      handle = touch_nickname(nickname)
+      if(channel = find_channel(channelname))
+        channel.post(handle, Iarm::Msg.new(channelname, nickname, data))
+      end
     end
     
-    def set_topic(who, channel, data)
-      touch_nickname(who)
-      if @channels.has_key?(channel)
-        data = Msg::Topic.new(channel, who, data) unless data.kind_of?(Msg::Topic)
-        if(@topics[channel] != data)
-          @mutex.synchronize { @topics[channel] = data }
-          post(data)
-          data
+    def set_topic(nickname, channelname, topic_data)
+      handle = touch_nickname(nickname)
+      if(channel = find_channel(channelname))
+        topic_data = Msg::Topic.new(channelname, nickname, topic_data) unless topic_data.kind_of?(Msg::Topic)
+        if(channel.topic != topic_data)
+          channel.topic = topic_data
+          channel.post(handle, topic_data)
+          topic_data
         end
       end
     end
     
-    def get_topic(channel)
-      @topics[channel]
+    def get_topic(channelname)
+      if(channel = find_channel(channelname))
+        channel.topic
+      end
     end
 
-    def post(msg)
-      @mutex.synchronize { send_msg(msg) } if(msg.kind_of?(Msg))
-    end
-    
     def self.start(uri=nil)
       DRb.start_service(uri, self.new)
       DRb.thread
@@ -125,41 +119,27 @@ module Iarm
     def initialize
       @mutex = Mutex.new()
       @reaper_mutex = Mutex.new()
-      @ttl_secs = 60
-      @listeners = Hash.new()            # { who => Thread }
-      @msgs = Hash.new() {|hsh,key| hsh[key] = [ ] }  # { who => [ msg1, msg2, ...] }
-      @clients = Hash.new()            # { who => time_of_last_activity }
-      @timers = Hash.new()		# { who => Timer object }
-      @channel_members = Hash.new() {|hsh,key| hsh[key] = { } }  # { channelname => { who1 => join_time }, who2 =>  ...] }
-      @channels_joined = Hash.new() {|hsh,key| hsh[key] = [ ] }  # { who => [ channel1, channel2 ] }
-      @channels = Hash.new()             # { channelname => password }
-      @topics = Hash.new()		# { channelname => topic }
+      @handles = Hash.new()            # { nickname => Handle object }
+      @channels = Hash.new() {|hsh,key| hsh[key] = Iarm::Channel.new(key) }
       @timeout_queue = []
       reaper_thread
     end
     
-    def touch_nickname(nickname)
-      timeout_box = (@ttl_secs.to_f / REAPER_GRANULARITY).ceil.to_i #/
+    def touch_nickname(nickname, refresh=true) # returns Handle object
       @reaper_mutex.synchronize do
-        @timeout_queue[timeout_box] ||= {}
-        @timeout_queue[timeout_box][nickname] = true
-        @clients[nickname] = clockval
+        handle = @handles[nickname] ||= Iarm::Handle.new(nickname)
+        handle.touch
+        if(refresh)
+          timeout_box = (handle.ttl.to_f / REAPER_GRANULARITY).ceil.to_i #/
+          @timeout_queue[timeout_box] ||= {}
+          @timeout_queue[timeout_box][handle] = true
+        end
       end
+      @handles[nickname]
     end
     
-    
-=begin
-  reaper ideas
-  ------------
-  
-  have a linked list which is in order of things to timeout
-  when taking something off the list, check its actual timeout value and put it back to sleep if needed
-  this could be a binary search down the track, for performance
-  
-=end    
-    
-    def timed_out?(nickname)
-      (tla = @clients[nickname]) && (tla + @ttl_secs) < clockval
+    def find_channel(channelname)
+      @channels[channelname] if @channels.has_key?(channelname)
     end
     
     def reaper_thread
@@ -168,23 +148,14 @@ module Iarm
           kill_list = []
           sleep REAPER_GRANULARITY
           @reaper_mutex.synchronize do
-            timeoutlist = @timeout_queue.shift
-            if timeoutlist
-              timeoutlist.keys.each do |who|
-                kill_list << who if timed_out?(who)
-              end
+            if(timeoutlist = @timeout_queue.shift)
+              kill_list = timeoutlist.keys.select {|who| who.timed_out? }
             end
           end
           @mutex.synchronize do
             kill_list.each do |who|
-              if(@channels_joined.has_key?(who))
-                @channels_joined[who].each do |ch|
-                  @channel_members[ch].delete(who)
-                  send_msg(Msg::Timeout.new(ch, who))
-                  check_channel_empty(ch)
-                end
-              end
-              kill_client(who)
+              who.timeout.each {|ch| check_channel_empty(ch) }
+              @handles.delete(who.name)
             end
           end
         end
@@ -194,38 +165,11 @@ module Iarm
     def clockval
       Time.new.to_i
     end
-    
-    def send_msg(msg)
-      @channel_members[msg.channel].each_key {|w| post_msg(w, msg) }
-      post_msg(nil, msg) if(@clients.has_key?(nil))
-    end
-    def post_msg(who, msg)
-      if(msg.kind_of?(Msg::Topic) || who != msg.from)
-        @msgs[who] << msg
-        @timers[who].poke if @timers[who]
-      end
-    end
-    def next_msg(who) # returns msg or nil
-      touch_nickname(who)
-      @msgs[who].shift
-    end
+
     def check_channel_empty(channel)
-      if(@channel_members[channel].empty?)
-        @channels.delete(channel)
-        @channel_members.delete(channel)
-        @topics.delete(channel)
+      if(channel.empty?)
+        @channels.delete(channel.name)
       end
-    end
-    def kill_client(who)
-      @channels_joined[who].each do |ch|
-        @channel_members[ch].delete(who)
-        check_channel_empty(ch)
-      end
-      @channels_joined.delete(who)
-      @clients.delete(who)
-      @timers.delete(who)
-      @msgs.delete(who)
-      @listeners.delete(who)
     end
 
   end
