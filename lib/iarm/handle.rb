@@ -3,9 +3,10 @@ module Iarm
   class Handle
   
     attr_reader :touched_at, :created_at, :name, :timer
-    attr_accessor :ttl, :msgs, :channels
+    attr_accessor :ttl, :channels
   
     def initialize(name)
+      @msg_mutex = Mutex.new
       @channels = {}
       @name = name
       @timer = Iarm::Timer.new
@@ -17,6 +18,14 @@ module Iarm
   
     def timed_out?
       (@touched_at + @ttl) < Time.now.to_i
+    end
+  
+    def next_msg
+      @msg_mutex.synchronize { @msgs.shift }
+    end
+    
+    def push_msg(msg)
+      @msg_mutex.synchronize { @msgs << msg }
     end
   
     def no_msgs?
@@ -56,7 +65,8 @@ module Iarm
     
     def send_msg(msg)
       if(msg.kind_of?(Msg::Topic) || @name != msg.from)
-        @msgs << msg
+        #puts "MSG[#{msg.class}] <##{msg.channel}:#{msg.from}> #{@name} : #{msg.data}"
+        self.push_msg(msg)
         self.poke
       end
     end

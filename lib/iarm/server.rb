@@ -27,7 +27,7 @@ module Iarm
     def join(who, channelname, key=nil)      # returns true if joined, false if denied, and nil if new channel formed
       retval = nil
       handle = touch_nickname(who)
-      @mutex.synchronize do
+      @channel_mutex.synchronize do
         if(channel = find_channel(channelname))
           retval = channel.key == key		# verify password
         else
@@ -44,18 +44,10 @@ module Iarm
     end 
 
     def depart(nickname, channelname=nil)  # nil=depart ALL channels and log out client
-      @mutex.synchronize do
-        handle = touch_nickname(nickname)
-        if channelname
-          if(channel = find_channel(channelname))
-            handle.depart(channel)
-            check_channel_empty(channel)
-          end
-        else
-          handle.depart(nil).each {|ch| check_channel_empty(ch) }
-          @handles.delete(nickname)
-        end
-      end
+      handle = touch_nickname(nickname)
+      channel = (find_channel(channelname) if channelname)
+      handle.depart(channel).each {|ch| check_channel_empty(ch) }
+      @handles.delete(nickname) if channelname.nil?
     end
 
     # getmsg(): NOTES
@@ -72,7 +64,7 @@ module Iarm
           mode && handle.no_msgs?
         end
       end
-      @mutex.synchronize { handle.msgs.shift }
+      handle.next_msg
     end
     
     def getmsgs(who, timeout=0)
@@ -117,8 +109,8 @@ module Iarm
     REAPER_GRANULARITY = 5  #seconds
     
     def initialize
-      @mutex = Mutex.new()
-      @reaper_mutex = Mutex.new()
+      @channel_mutex = Mutex.new()
+      @handle_mutex = Mutex.new()
       @handles = Hash.new()            # { nickname => Handle object }
       @channels = Hash.new() {|hsh,key| hsh[key] = Iarm::Channel.new(key) }
       @timeout_queue = []
@@ -126,16 +118,17 @@ module Iarm
     end
     
     def touch_nickname(nickname, refresh=true) # returns Handle object
-      @reaper_mutex.synchronize do
-        handle = @handles[nickname] ||= Iarm::Handle.new(nickname)
-        handle.touch
-        if(refresh)
-          timeout_box = (handle.ttl.to_f / REAPER_GRANULARITY).ceil.to_i #/
-          @timeout_queue[timeout_box] ||= {}
-          @timeout_queue[timeout_box][handle] = true
-        end
+      if !@handles.has_key?(nickname)
+        @handle_mutex.synchronize { @handles[nickname] ||= Iarm::Handle.new(nickname) }
       end
-      @handles[nickname]
+      handle = @handles[nickname]
+      handle.touch
+      if(refresh)
+        timeout_box = (handle.ttl.to_f / REAPER_GRANULARITY).ceil.to_i #/
+        @timeout_queue[timeout_box] ||= {}
+        @timeout_queue[timeout_box][handle] = true
+      end
+      handle
     end
     
     def find_channel(channelname)
@@ -147,16 +140,12 @@ module Iarm
         loop do
           kill_list = []
           sleep REAPER_GRANULARITY
-          @reaper_mutex.synchronize do
-            if(timeoutlist = @timeout_queue.shift)
-              kill_list = timeoutlist.keys.select {|who| who.timed_out? }
-            end
+          if(timeoutlist = @timeout_queue.shift)
+            kill_list = timeoutlist.keys.select {|who| who.timed_out? }
           end
-          @mutex.synchronize do
-            kill_list.each do |who|
-              who.timeout.each {|ch| check_channel_empty(ch) }
-              @handles.delete(who.name)
-            end
+          kill_list.each do |who|
+            who.timeout.each {|ch| check_channel_empty(ch) }
+            @handles.delete(who.name)
           end
         end
       end
@@ -167,8 +156,8 @@ module Iarm
     end
 
     def check_channel_empty(channel)
-      if(channel.empty?)
-        @channels.delete(channel.name)
+      @channel_mutex.synchronize do
+        @channels.delete(channel.name) if channel.empty?
       end
     end
 
